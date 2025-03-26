@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>EcoRoute Optimizer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background-color: #f5f7fa; }
+        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 25px; border-radius: 10px; box-shadow: 0 2px 15px rgba(0,0,0,0.1); }
+        #map { height: 500px; width: 100%; margin: 20px 0; border-radius: 8px; border: 1px solid #e0e0e0; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-weight: 600; color: #3c4043; }
+        input { width: 100%; padding: 12px; border: 1px solid #dadce0; border-radius: 8px; font-size: 16px; transition: border 0.3s; }
+        input:focus { border-color: #4285F4; outline: none; box-shadow: 0 0 0 2px #e8f0fe; }
+        button { background: #4285F4; color: white; border: none; padding: 12px 20px; border-radius: 8px; font-size: 16px; font-weight: 500; cursor: pointer; transition: background 0.3s; }
+        button:hover { background: #3367d6; }
+        button:disabled { background: #9e9e9e; cursor: not-allowed; }
+        .hidden { display: none; }
+        #map-error { color: #d32f2f; padding: 12px; background: #ffebee; border-radius: 8px; margin-bottom: 15px; }
+        
+        /* Air Quality Indicators */
+        .aqi-good { color: #34a853; font-weight: bold; }
+        .aqi-moderate { color: #fbbc05; font-weight: bold; }
+        .aqi-unhealthy { color: #f29900; font-weight: bold; }
+        .aqi-very-unhealthy { color: #ef6c00; font-weight: bold; }
+        .aqi-hazardous { color: #d50000; font-weight: bold; }
+        
+        /* Route Info Card */
+        .info-card { background: #f8f9fa; border-radius: 10px; padding: 20px; margin-top: 20px; }
+        .info-card h2 { margin-top: 0; color: #202124; }
+        .info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
+        .info-item { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .info-item h3 { margin-top: 0; font-size: 16px; color: #5f6368; }
+        .info-item p { margin-bottom: 0; font-size: 18px; color: #202124; }
+        
+        /* Eco Score */
+        .eco-score { 
+            display: inline-block; 
+            padding: 5px 10px; 
+            border-radius: 20px; 
+            font-weight: bold; 
+            background: #e8f0fe; 
+            color: #4285F4;
+        }
+        
+        /* Chatbot Styles */
+        #chatbot-container {
+            font-family: 'Arial', sans-serif;
+            transition: all 0.3s ease;
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 350px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            z-index: 1000;
+        }
+        #chatbot-header {
+            background: #4285F4;
+            color: white;
+            padding: 12px 15px;
+            border-radius: 10px 10px 0 0;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.3s;
+        }
+        #chatbot-header:hover {
+            background: #3367D6;
+        }
+        #chatbot-body {
+            height: 400px;
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid #e0e0e0;
+            border-right: 1px solid #e0e0e0;
+        }
+        #chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            background: #f9f9f9;
+            scrollbar-width: thin;
+            scrollbar-color: #4285F4 #f1f1f1;
+        }
+        #chat-messages::-webkit-scrollbar {
+            width: 6px;
+        }
+        #chat-messages::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        #chat-messages::-webkit-scrollbar-thumb {
+            background-color: #4285F4;
+            border-radius: 6px;
+        }
+        #user-message {
+            flex: 1;
+            padding: 10px 15px;
+            border: 1px solid #dadce0;
+            border-radius: 20px;
+            outline: none;
+            transition: border 0.3s;
+            width: 80%; /* Wider input */
+        }
+        #user-message:focus {
+            border-color: #4285F4;
+        }
+        #send-message {
+            background: #4285F4;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            padding: 10px 15px;
+            cursor: pointer;
+            transition: background 0.2s;
+            width: 20%; /* Smaller button */
+            margin-left: 8px;
+        }
+        #send-message:hover {
+            background: #3367D6;
+        }
+        
+        /* Typing indicator */
+        .typing-indicator {
+            display: inline-block;
+            padding-left: 15px;
+        }
+        .typing-indicator span {
+            height: 8px;
+            width: 8px;
+            background: #666;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 3px;
+            animation: typing 1s infinite ease-in-out;
+        }
+        .typing-indicator span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+        .typing-indicator span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+        @keyframes typing {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .container { padding: 15px; }
+            #map { height: 350px; }
+            #chatbot-container { width: 90%; right: 5%; }
+            .info-grid { grid-template-columns: 1fr; }
+            #user-message { width: 70%; }
+            #send-message { width: 30%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h1 style="margin: 0; color: #202124;">🌿 EcoRoute Optimizer</h1>
+            <div style="text-align: right;">
+                Welcome, <strong>{{ username }}</strong>! 
+                <a href="{{ url_for('logout') }}" style="color: #4285F4; text-decoration: none; margin-left: 10px;">
+                    Logout
+                </a>
+            </div>
+        </header>
+        
+        <div id="map-error" class="hidden"></div>
+        
+        <form id="route-form">
+            <div class="form-group">
+                <label for="origin">Current Location:</label>
+                <input type="text" id="origin" placeholder="Enter your current location" required>
+            </div>
+            <div class="form-group">
+                <label for="destination">Destination:</label>
+                <input type="text" id="destination" placeholder="Where would you like to go?" required>
+            </div>
+            <button type="submit" id="route-submit">
+                <span id="route-button-text">Find Eco-Friendly Route</span>
+                <span id="route-spinner" class="hidden" style="display: inline-block; margin-left: 8px;">⏳</span>
+            </button>
+        </form>
+        
+        <div id="map"></div>
+        
+        <div id="route-info" class="hidden">
+            <div class="info-card">
+                <h2>🌱 Your Eco-Friendly Route</h2>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <h3>From</h3>
+                        <p id="origin-text"></p>
+                    </div>
+                    <div class="info-item">
+                        <h3>To</h3>
+                        <p id="destination-text"></p>
+                    </div>
+                    <div class="info-item">
+                        <h3>Distance</h3>
+                        <p id="distance"></p>
+                    </div>
+                    <div class="info-item">
+                        <h3>Estimated Time</h3>
+                        <p id="duration"></p>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 20px;">
+                    <h3>Route Air Quality</h3>
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <h3>Air Quality Index</h3>
+                            <p id="aqi-value"></p>
+                        </div>
+                        <div class="info-item">
+                            <h3>Quality</h3>
+                            <p id="aqi-category"></p>
+                        </div>
+                        <div class="info-item">
+                            <h3>Main Pollutant</h3>
+                            <p id="aqi-pollutant"></p>
+                        </div>
+                        <div class="info-item">
+                            <h3>Eco Score</h3>
+                            <p id="eco-score" class="eco-score"></p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 20px;">
+                    <h3>Health Recommendations</h3>
+                    <p id="health-recommendations" style="background: #f8f9fa; padding: 15px; border-radius: 8px;"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chatbot Container -->
+    <div id="chatbot-container">
+        <div id="chatbot-header">
+            <h3 style="margin: 0; font-size: 16px;">🚗 EcoRoute Assistant</h3>
+            <span id="chatbot-toggle" style="font-size: 18px;">−</span>
+        </div>
+        <div id="chatbot-body">
+            <div id="chat-messages">
+                <div style="text-align: center; color: #666; font-size: 12px; padding: 10px;">
+                    AI Assistant ready to help with eco-friendly routing
+                </div>
+            </div>
+            <div style="padding: 15px; background: white; border-top: 1px solid #e0e0e0; border-radius: 0 0 10px 10px;">
+                <div style="display: flex; align-items: center;">
+                    <input type="text" id="user-message" placeholder="Ask about routes or air quality..." 
+                           style="flex-grow: 1; padding: 10px 15px; border: 1px solid #dadce0; border-radius: 20px; outline: none;">
+                    <button id="send-message" style="margin-left: 8px;">
+                        Send
+                    </button>
+                </div>
+                <div style="font-size: 11px; color: #999; text-align: center; margin-top: 8px;">
+                    Powered by AI • Real-time data
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let map;
+        let directionsService;
+        let directionsRenderer;
+        let currentRouteData = null;
+        let alternativeRoutes = [];
+        const ROUTE_COLORS = ['#FF5252', '#4CAF50', '#FFC107', '#9C27B0', '#607D8B'];
+    
+        function initMap() {
+            try {
+                map = new google.maps.Map(document.getElementById('map'), {
+                    center: {lat: 12.9716, lng: 77.5946},
+                    zoom: 12,
+                    styles: [
+                        {
+                            "featureType": "road",
+                            "elementType": "geometry",
+                            "stylers": [
+                                { "visibility": "simplified" }
+                            ]
+                        },
+                        {
+                            "featureType": "transit.station",
+                            "elementType": "labels",
+                            "stylers": [
+                                { "visibility": "on" }
+                            ]
+                        }
+                    ]
+                });
+                
+                directionsService = new google.maps.DirectionsService();
+                directionsRenderer = new google.maps.DirectionsRenderer({
+                    map: map,
+                    suppressMarkers: false,
+                    polylineOptions: {
+                        strokeColor: '#4285F4',
+                        strokeOpacity: 0.8,
+                        strokeWeight: 6
+                    }
+                });
+                
+                // Set up autocomplete
+                new google.maps.places.Autocomplete(
+                    document.getElementById('origin'),
+                    {componentRestrictions: {country: 'in'}}
+                );
+                new google.maps.places.Autocomplete(
+                    document.getElementById('destination'), 
+                    {componentRestrictions: {country: 'in'}}
+                );
+            } catch (e) {
+                showError("Failed to load maps. Please refresh the page.");
+            }
+        }
+        
+        function showError(msg) {
+            const errDiv = document.getElementById('map-error');
+            errDiv.textContent = msg;
+            errDiv.classList.remove('hidden');
+            setTimeout(() => errDiv.classList.add('hidden'), 5000);
+        }
+        
+        function getAqiClass(aqi) {
+            aqi = parseInt(aqi) || 0;
+            if (aqi <= 50) return 'aqi-good';
+            if (aqi <= 100) return 'aqi-moderate';
+            if (aqi <= 150) return 'aqi-unhealthy';
+            if (aqi <= 200) return 'aqi-very-unhealthy';
+            return 'aqi-hazardous';
+        }
+        
+        function getAqiDescription(aqi) {
+            aqi = parseInt(aqi) || 0;
+            if (aqi <= 50) return 'Good';
+            if (aqi <= 100) return 'Moderate';
+            if (aqi <= 150) return 'Unhealthy for Sensitive Groups';
+            if (aqi <= 200) return 'Unhealthy';
+            if (aqi <= 300) return 'Very Unhealthy';
+            return 'Hazardous';
+        }
+        
+        function metersToKm(meters) {
+            return (meters / 1000).toFixed(1) + ' km';
+        }
+        
+        function secondsToMinutes(seconds) {
+            return Math.round(parseInt(seconds) / 60) + ' min';
+        }
+        function renderAlternativeRoutes(routes) {
+        // Clear previous routes
+        alternativeRoutes.forEach(route => route.setMap(null));
+        alternativeRoutes = [];
+
+        routes.forEach((route, index) => {
+            const path = google.maps.geometry.encoding.decodePath(route.polyline);
+            const routePolyline = new google.maps.Polyline({
+                path: path,
+                geodesic: true,
+                strokeColor: ROUTE_COLORS[index % ROUTE_COLORS.length],
+                strokeOpacity: 0.7,
+                strokeWeight: 3,
+                map: map
+            });
+            alternativeRoutes.push(routePolyline);
+        });
+    }
+    function checkPublicTransportViability(distanceMeters, durationSeconds) {
+        // Simple heuristic to determine if public transport is viable
+        const distanceKm = distanceMeters / 1000;
+        const durationMinutes = durationSeconds / 60;
+        
+        // If distance is less than 3km, walking might be better
+        if (distanceKm < 3) {
+            return {
+                viable: true,
+                message: "Consider walking or cycling for this short distance (less than 3km). It's pollution-free!",
+                icon: '🚶'
+            };
+        }
+        
+        // If duration is less than 15 minutes, might not be worth public transport
+        if (durationMinutes < 15) {
+            return {
+                viable: false,
+                message: "Public transport might not save time for this short trip.",
+                icon: '⏱️'
+            };
+        }
+        
+        // If distance is between 3-20km and duration >15min, public transport is good
+        if (distanceKm <= 20) {
+            return {
+                viable: true,
+                message: "This route is perfect for public transport! Look for bus options.",
+                icon: '🚌'
+            };
+        }
+        
+        // For longer distances, suggest train if available
+        return {
+            viable: true,
+            message: "Consider taking a train for this long distance to reduce pollution.",
+            icon: '🚆'
+        };
+    }
+
+
+    document.getElementById('route-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const button = document.getElementById('route-submit');
+        const buttonText = document.getElementById('route-button-text');
+        const spinner = document.getElementById('route-spinner');
+        const errorDiv = document.getElementById('map-error');
+        
+        button.disabled = true;
+        buttonText.textContent = 'Finding best eco-route...';
+        spinner.classList.remove('hidden');
+        errorDiv.classList.add('hidden');
+        
+        try {
+            const origin = document.getElementById('origin').value;
+            const destination = document.getElementById('destination').value;
+            
+            if (!origin || !destination) {
+                throw new Error('Please enter both locations');
+            }
+            
+            const response = await fetch('/optimized_route', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    origin: origin,
+                    destination: destination
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (!response.ok || data.status === 'error') {
+                throw new Error(data.error || 'Failed to calculate route');
+            }
+            
+            // Store route data for chatbot
+            currentRouteData = data;
+            
+            // Render all alternative routes
+            if (data.alternative_routes) {
+                renderAlternativeRoutes(data.alternative_routes);
+            }
+            
+            // Create path for the optimized route
+            const path = google.maps.geometry.encoding.decodePath(data.polyline);
+            const routePolyline = new google.maps.Polyline({
+                path: path,
+                geodesic: true,
+                strokeColor: '#4285F4',
+                strokeOpacity: 1.0,
+                strokeWeight: 5,
+                map: map
+            });
+            
+            // Add markers
+            new google.maps.Marker({
+                position: path[0],
+                map: map,
+                title: 'Start: ' + data.origin
+            });
+            
+            new google.maps.Marker({
+                position: path[path.length-1],
+                map: map,
+                title: 'End: ' + data.destination
+            });
+            
+            // Fit map to route bounds
+            const bounds = new google.maps.LatLngBounds();
+            path.forEach(point => bounds.extend(point));
+            map.fitBounds(bounds);
+            
+            // Update route info
+            document.getElementById('origin-text').textContent = data.origin;
+            document.getElementById('destination-text').textContent = data.destination;
+            document.getElementById('distance').textContent = (data.distance_meters / 1000).toFixed(1) + ' km';
+            document.getElementById('duration').textContent = Math.round(data.duration_seconds / 60) + ' min';
+            
+            // Update air quality info
+            const aqi = data.air_quality.aqi || 'N/A';
+            document.getElementById('aqi-value').textContent = aqi;
+            document.getElementById('aqi-value').className = getAqiClass(aqi);
+            document.getElementById('aqi-category').textContent = getAqiDescription(aqi);
+            document.getElementById('aqi-category').className = getAqiClass(aqi);
+            document.getElementById('aqi-pollutant').textContent = data.air_quality.dominant_pollutant || 'N/A';
+            document.getElementById('health-recommendations').textContent = 
+                data.air_quality.health_recommendations || 'No specific health recommendations available.';
+            
+            // Update eco score
+            document.getElementById('eco-score').textContent = (100 - (data.score * 10)).toFixed(0) + '/100';
+            
+            // Add public transport suggestion
+            const transportSuggestion = checkPublicTransportViability(data.distance_meters, data.duration_seconds);
+            const transportHtml = `
+                <div style="margin-top: 15px; padding: 15px; background: ${transportSuggestion.viable ? '#e8f5e9' : '#fff3e0'}; border-radius: 8px;">
+                    <h3 style="margin-top: 0;">${transportSuggestion.icon} Public Transport Suggestion</h3>
+                    <p>${transportSuggestion.message}</p>
+                    ${transportSuggestion.viable ? '<p style="font-size: 14px; color: #2e7d32;">Taking public transport could reduce your carbon footprint by up to 75%!</p>' : ''}
+                </div>
+            `;
+            document.getElementById('health-recommendations').insertAdjacentHTML('afterend', transportHtml);
+            
+            // Show results
+            document.getElementById('route-info').classList.remove('hidden');
+            
+        } catch (error) {
+            errorDiv.textContent = error.message;
+            errorDiv.classList.remove('hidden');
+            console.error('Error:', error);
+        } finally {
+            button.disabled = false;
+            buttonText.textContent = 'Find Eco-Friendly Route';
+            spinner.classList.add('hidden');
+        }
+    });
+
+        
+        // Load Google Maps API
+        function loadMaps() {
+            const script = document.createElement('script');
+            script.src = `https://maps.googleapis.com/maps/api/js?key={{ api_key }}&libraries=places,geometry&callback=initMap`;
+            script.async = true;
+            script.defer = true;
+            script.onerror = () => showError("Failed to load Google Maps");
+            document.head.appendChild(script);
+        }
+        
+        window.gm_authFailure = () => showError("Google Maps authentication failed");
+        window.onload = loadMaps;
+        
+        // Chatbot Functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const chatbotHeader = document.getElementById('chatbot-header');
+            const chatbotBody = document.getElementById('chatbot-body');
+            const chatMessages = document.getElementById('chat-messages');
+            const userInput = document.getElementById('user-message');
+            const sendButton = document.getElementById('send-message');
+            const toggleButton = document.getElementById('chatbot-toggle');
+            
+            // Toggle chatbot visibility
+            chatbotHeader.addEventListener('click', function() {
+                if (chatbotBody.style.display === 'none') {
+                    chatbotBody.style.display = 'flex';
+                    toggleButton.textContent = '−';
+                } else {
+                    chatbotBody.style.display = 'none';
+                    toggleButton.textContent = '+';
+                }
+            });
+            
+            // Send message function
+            async function sendMessage() {
+                const message = userInput.value.trim();
+                if (!message) return;
+                
+                // Add user message to chat
+                addMessage('user', message);
+                userInput.value = '';
+                
+                // Show typing indicator
+                const typingIndicator = document.createElement('div');
+                typingIndicator.id = 'typing-indicator';
+                typingIndicator.innerHTML = `
+                    <div class="typing-indicator">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                `;
+                chatMessages.appendChild(typingIndicator);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+                
+                try {
+                    // Get current route data to provide context to the AI
+                    const routeData = currentRouteData ? {
+                        distance: currentRouteData.distance,
+                        duration: currentRouteData.duration,
+                        air_quality: currentRouteData.air_quality,
+                        score: currentRouteData.score
+                    } : {};
+                    
+                    const response = await fetch('/ask_ai', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            message: message,
+                            route_data: routeData
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    
+                    // Remove typing indicator
+                    const indicator = document.getElementById('typing-indicator');
+                    if (indicator) indicator.remove();
+                    
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+                    
+                    addMessage('assistant', data.response);
+                } catch (error) {
+                    // Remove typing indicator
+                    const indicator = document.getElementById('typing-indicator');
+                    if (indicator) indicator.remove();
+                    
+                    console.error('Chatbot error:', error);
+                    addMessage('assistant', "I'm having trouble processing your request. Please try again later.");
+                }
+            }
+            
+            // Add message to chat
+            function addMessage(role, content) {
+                const messageDiv = document.createElement('div');
+                messageDiv.style.marginBottom = '12px';
+                messageDiv.style.wordWrap = 'break-word';
+                messageDiv.style.lineHeight = '1.5';
+                
+                if (role === 'user') {
+                    messageDiv.style.alignSelf = 'flex-end';
+                    messageDiv.style.backgroundColor = '#4285F4';
+                    messageDiv.style.color = 'white';
+                    messageDiv.style.borderRadius = '18px 18px 0 18px';
+                    messageDiv.style.maxWidth = '80%';
+                    messageDiv.style.padding = '10px 15px';
+                } else {
+                    messageDiv.style.alignSelf = 'flex-start';
+                    messageDiv.style.backgroundColor = '#f1f1f1';
+                    messageDiv.style.color = '#333';
+                    messageDiv.style.borderRadius = '18px 18px 18px 0';
+                    messageDiv.style.maxWidth = '80%';
+                    messageDiv.style.padding = '10px 15px';
+                    messageDiv.style.whiteSpace = 'pre-line';
+                }
+                
+                messageDiv.textContent = content;
+                chatMessages.appendChild(messageDiv);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+            
+            // Event listeners
+            sendButton.addEventListener('click', sendMessage);
+            userInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    sendMessage();
+                }
+            });
+            
+            // Initial welcome message
+            setTimeout(() => {
+                addMessage('assistant', "Hello! I'm your EcoRoute Assistant. I can help you with:");
+                addMessage('assistant', "• Finding eco-friendly routes\n• Understanding air quality on your route\n• Health recommendations based on AQI\n• Alternative route suggestions");
+            }, 1500);
+        });
+    </script>
+</body>
+</html>

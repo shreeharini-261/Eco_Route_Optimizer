@@ -1,0 +1,38 @@
+<!-- templates/air_quality.html -->
+<form id="airQualityForm">
+    <input type="text" id="location" placeholder="Enter location">
+    <button type="submit">Get Air Quality</button>
+</form>
+<div id="result"></div>
+
+<script>
+document.getElementById('airQualityForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const location = document.getElementById('location').value;
+    
+    // First geocode the location to get lat/long (you might use Google Maps Geocoding API)
+    // For this example, we'll assume you have the coordinates
+    
+    try {
+        const response = await fetch('/air-quality', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                location: {
+                    lat: 37.7749,  // Replace with actual geocoded values
+                    lng: -122.4194
+                }
+            })
+        });
+        
+        const data = await response.json();
+        document.getElementById('result').innerHTML = 
+            `<h3>Air Quality Index: ${data.indexes[0].aqi}</h3>
+             <p>Dominant Pollutant: ${data.indexes[0].dominantPollutant}</p>`;
+    } catch (error) {
+        console.error('Error:', error);
+    }
+});
+</script>
